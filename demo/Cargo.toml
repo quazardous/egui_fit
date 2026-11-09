@@ -1,0 +1,23 @@
+[package]
+name = "egui_gridflow_demo"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "An interactive web demo of egui_gridflow, with egui-pop widgets as elements"
+repository = "https://github.com/quazardous/egui_gridflow"
+publish = false
+
+[[bin]]
+name = "egui_gridflow_demo"
+path = "src/main.rs"
+
+[dependencies]
+egui_gridflow = { path = ".." }
+# The widgets laid out (sliders, toggles, fields, curve, wheels,
+# histogram), and egui and eframe through egui-pop's re-exports.
+egui-pop = { version = "0.7.0", default-features = false, features = ["eframe", "phosphor", "bundled-fonts", "viewport"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+log = "0.4"
