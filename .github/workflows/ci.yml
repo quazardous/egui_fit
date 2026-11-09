@@ -24,3 +24,22 @@ jobs:
       - run: cargo doc --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
+
+  # The demo (demo/): linted natively, built for the web as Pages builds it.
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+      - run: cargo clippy -p egui_gridflow_demo --all-targets -- -D warnings
+      - run: cargo clippy -p egui_gridflow_demo --target wasm32-unknown-unknown -- -D warnings
+      - name: Build the demo for the web
+        working-directory: demo
+        run: trunk build --release
