@@ -1,14 +1,14 @@
 //! The demo: a resizable box laid out by egui_gridflow, a palette and a
-//! list of elements, an inspector for the selected one, overlays, a
-//! hysteresis trail and the engine's ASCII dump.
+//! list of elements grouped into cases, an inspector for the selected one,
+//! overlays, a hysteresis trail and the engine's ASCII dump.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 use crate::catalog::{s, Form, Item, Kind, FORM_NAMES};
 use crate::render;
 use egui_gridflow::{
-    layout, AspectRatio, Axis, Cell, Container, Grow, Layout, Orientation, Placement, Reason, Size,
-    Status, TWELFTHS_PER_UNIT,
+    layout_grouped, AspectRatio, Axis, Cell, Container, Group, Grow, Layout, Orientation,
+    Placement, Reason, Size, Status, TWELFTHS_PER_UNIT,
 };
 use egui_pop::egui::{
     self, pos2, vec2, Align2, Color32, CursorIcon, FontId, Rect, RichText, Sense, Stroke,
@@ -56,6 +56,7 @@ struct Overlays {
     grid: bool,
     status: bool,
     order: bool,
+    groups: bool,
 }
 
 /// One point of the hysteresis trail.
@@ -74,6 +75,8 @@ pub struct Demo {
     items: Vec<Item>,
     next_key: u64,
     selected: Option<u64>,
+    /// The elements ticked in the list, to group into a case.
+    marked: BTreeSet<u64>,
     form_tab: usize,
     box_width: f32,
     bounded: bool,
@@ -98,6 +101,7 @@ impl Default for Demo {
             items: Vec::new(),
             next_key: 1,
             selected: None,
+            marked: BTreeSet::new(),
             form_tab: 0,
             box_width: 480.0,
             bounded: false,
@@ -110,6 +114,7 @@ impl Default for Demo {
                 grid: true,
                 status: true,
                 order: false,
+                groups: true,
             },
             last: None,
             last_width: 0.0,
@@ -133,8 +138,9 @@ type Preset = (
     fn(&mut dyn FnMut(Kind) -> Item) -> Vec<Item>,
 );
 
-const PRESETS: [Preset; 4] = [
+const PRESETS: [Preset; 5] = [
     ("Darkroom card", 4.0, None, darkroom),
+    ("Two cases", 4.0, None, cases),
     ("Toolbar strip", 6.0, Some(1.0 / 3.0), toolbar),
     ("Wide dock", 9.0, None, dock),
     ("Gap filling", 3.0, None, gaps),
@@ -152,6 +158,42 @@ fn darkroom(new: &mut dyn FnMut(Kind) -> Item) -> Vec<Item> {
         new(Kind::Curve).labelled("Tone curve"),
         new(Kind::Meter).labelled("Level"),
     ]
+}
+
+/// Two cases, each a legend over its controls, among loose controls.
+fn cases(new: &mut dyn FnMut(Kind) -> Item) -> Vec<Item> {
+    let mut out = vec![
+        new(Kind::Toggle).labelled("Enabled"),
+        new(Kind::Dropdown).labelled("Mode"),
+    ];
+    let tone = new(Kind::Legend).labelled("Tone");
+    let t = tone.key;
+    out.extend([
+        tone.in_case(t),
+        new(Kind::Slider).labelled("Exposure").in_case(t),
+        new(Kind::Toggle).labelled("Auto").in_case(t),
+        new(Kind::Slider)
+            .labelled("Contrast")
+            .with_number(40.0)
+            .in_case(t),
+        new(Kind::Dropdown).labelled("Curve").in_case(t),
+    ]);
+    out.push(new(Kind::Knob).labelled("Mix"));
+    let colour = new(Kind::Legend).labelled("Colour");
+    let c = colour.key;
+    out.extend([
+        colour.in_case(c),
+        new(Kind::Wheels).labelled("Grading").in_case(c),
+        new(Kind::Slider)
+            .labelled("Saturation")
+            .with_number(60.0)
+            .in_case(c),
+    ]);
+    out.extend([
+        new(Kind::Meter).labelled("Level"),
+        new(Kind::Toggle).labelled("Preview"),
+    ]);
+    out
 }
 
 fn toolbar(new: &mut dyn FnMut(Kind) -> Item) -> Vec<Item> {
@@ -227,6 +269,7 @@ impl Demo {
             self.box_height = h * unit;
         }
         self.selected = self.items.first().map(|i| i.key);
+        self.marked.clear();
         self.form_tab = 0;
         self.preset = name;
         self.reset_trail();
@@ -244,6 +287,116 @@ impl Demo {
         self.items.iter().position(|i| i.key == key)
     }
 
+    /// The engine's groups: each run of items in the same case, with its
+    /// legend as the header when it comes first.
+    fn groups(&self) -> Vec<Group> {
+        let mut groups: Vec<Group> = Vec::new();
+        let mut start = 0;
+        for i in 1..=self.items.len() {
+            let case = self.items[start].case;
+            if i < self.items.len() && self.items[i].case == case {
+                continue;
+            }
+            if let Some(key) = case {
+                let mut g = Group::new(key, start..i);
+                if self.items[start].kind == Kind::Legend {
+                    g = g.with_header();
+                }
+                groups.push(g);
+            }
+            start = i;
+        }
+        groups
+    }
+
+    /// Groups the marked items into a new case under a legend, at the
+    /// place of the first of them.
+    fn group_marked(&mut self) {
+        let Some(at) = self.items.iter().position(|i| self.marked.contains(&i.key)) else {
+            return;
+        };
+        let legend = self.new_item(Kind::Legend);
+        let case = legend.key;
+        let cases = self.items.iter().filter(|i| i.kind == Kind::Legend).count();
+        let mut members = vec![legend.labelled(&format!("Case {}", cases + 1))];
+        let mut rest = Vec::new();
+        for item in self.items.drain(..) {
+            if self.marked.contains(&item.key) && item.kind != Kind::Legend {
+                members.push(item);
+            } else {
+                rest.push(item);
+            }
+        }
+        for m in &mut members {
+            m.case = Some(case);
+        }
+        let at = at.min(rest.len());
+        rest.splice(at..at, members);
+        self.items = rest;
+        self.drop_empty_cases();
+        self.marked.clear();
+        self.selected = Some(case);
+    }
+
+    /// Takes the case `case` apart: its legend goes, its controls stay.
+    fn ungroup(&mut self, case: u64) {
+        self.items
+            .retain(|i| !(i.kind == Kind::Legend && i.case == Some(case)));
+        for i in &mut self.items {
+            if i.case == Some(case) {
+                i.case = None;
+            }
+        }
+        if self.selected == Some(case) {
+            self.selected = None;
+        }
+    }
+
+    /// Removes the legends left with no control.
+    fn drop_empty_cases(&mut self) {
+        let empty: Vec<u64> = self
+            .items
+            .iter()
+            .filter(|i| i.kind == Kind::Legend)
+            .filter_map(|i| i.case)
+            .filter(|&c| {
+                !self
+                    .items
+                    .iter()
+                    .any(|i| i.case == Some(c) && i.kind != Kind::Legend)
+            })
+            .collect();
+        for c in empty {
+            self.ungroup(c);
+        }
+    }
+
+    /// Moves the item at `from` one step to `to`. A move across a case's
+    /// edge first crosses the edge: the item joins or leaves the case in
+    /// place (past a legend, it changes place too). Legends stay put.
+    fn step(&mut self, from: usize, to: usize) {
+        if self.items[from].kind == Kind::Legend {
+            return;
+        }
+        let (mine, theirs) = (self.items[from].case, self.items[to].case);
+        if self.items[to].kind == Kind::Legend {
+            self.items.swap(from, to);
+            self.items[to].case = if to > from {
+                // Down past a legend: into its case, just below it.
+                theirs
+            } else {
+                // Up past its case's legend: out of the case, into
+                // whatever comes before it.
+                to.checked_sub(1).and_then(|i| self.items[i].case)
+            };
+        } else if mine != theirs {
+            self.items[from].case = theirs;
+        } else {
+            self.items.swap(from, to);
+        }
+        self.drop_empty_cases();
+    }
+
     /// Lays the box out, keeping the trail.
     fn run_layout(&mut self, width: f32) -> (Layout, Vec<Vec<usize>>) {
         let unit = self.density.unit();
@@ -257,7 +410,7 @@ impl Demo {
         } else {
             None
         };
-        let result = layout(&container, &elements, previous);
+        let result = layout_grouped(&container, &elements, &self.groups(), previous);
 
         let choices: Vec<_> = result
             .placements
@@ -405,10 +558,54 @@ impl Demo {
         ui.separator();
         ui.heading("Elements");
         ui.label(RichText::new("In logical order: Tab, MIDI banks").weak());
+        ui.horizontal_wrapped(|ui| {
+            let n = self.marked.len();
+            if ui
+                .add_enabled(n > 0, egui::Button::new(format!("Group {n} as a case")))
+                .on_hover_text(
+                    "Tick elements below, then group them under a legend: \
+                     packing stays dense inside the case, and nothing \
+                     outside it moves into its gaps",
+                )
+                .clicked()
+            {
+                self.group_marked();
+            }
+            let case = self
+                .selected
+                .and_then(|k| self.index_of(k))
+                .and_then(|i| self.items[i].case);
+            if ui
+                .add_enabled(case.is_some(), egui::Button::new("Ungroup"))
+                .on_hover_text("Take the selected element's case apart")
+                .clicked()
+            {
+                if let Some(c) = case {
+                    self.ungroup(c);
+                }
+            }
+        });
         let mut action = None;
         for (i, item) in self.items.iter().enumerate() {
             let placed = result.get(item.key);
             ui.horizontal(|ui| {
+                let mut ticked = self.marked.contains(&item.key);
+                if item.kind != Kind::Legend
+                    && ui
+                        .checkbox(&mut ticked, "")
+                        .on_hover_text("Mark, to group into a case")
+                        .changed()
+                {
+                    action = Some(Action::Mark(item.key, ticked));
+                }
+                if item.case.is_some() {
+                    let bar = if item.kind == Kind::Legend {
+                        "┌"
+                    } else {
+                        "│"
+                    };
+                    ui.label(RichText::new(bar).weak());
+                }
                 let letter = letter(i);
                 let status = placed.map_or(Status::Placed, |p| p.status);
                 ui.colored_label(status_color(&status), "●")
@@ -440,6 +637,7 @@ impl Demo {
         ui.checkbox(&mut self.overlays.grid, "Grid in twelfths");
         ui.checkbox(&mut self.overlays.status, "Slot status");
         ui.checkbox(&mut self.overlays.order, "Logical and visual order");
+        ui.checkbox(&mut self.overlays.groups, "Case frames");
     }
 
     fn act(&mut self, action: Option<Action>) {
@@ -451,13 +649,27 @@ impl Demo {
                 self.selected = Some(key);
             }
             Some(Action::Remove(i)) => {
-                let key = self.items.remove(i).key;
-                if self.selected == Some(key) {
+                let item = self.items.remove(i);
+                if item.kind == Kind::Legend {
+                    if let Some(c) = item.case {
+                        self.ungroup(c);
+                    }
+                }
+                if self.selected == Some(item.key) {
                     self.selected = None;
+                }
+                self.marked.remove(&item.key);
+                self.drop_empty_cases();
+            }
+            Some(Action::Mark(key, on)) => {
+                if on {
+                    self.marked.insert(key);
+                } else {
+                    self.marked.remove(&key);
                 }
             }
             Some(Action::Move(from, to)) if to < self.items.len() => {
-                self.items.swap(from, to);
+                self.step(from, to);
             }
             _ => {}
         }
@@ -492,6 +704,25 @@ impl Demo {
 
         if self.overlays.grid {
             grid(&painter, rect, unit, result.columns, &visuals);
+        }
+
+        // Each case's frame, around the band the engine gives it.
+        if self.overlays.groups {
+            for g in &result.groups {
+                let Some(b) = g.points else { continue };
+                let frame = Rect::from_min_size(rect.min + vec2(b.x, b.y), vec2(b.w, b.h));
+                painter.rect_filled(
+                    frame.shrink(1.0),
+                    6.0,
+                    visuals.selection.bg_fill.gamma_multiply(0.08),
+                );
+                painter.rect_stroke(
+                    frame.shrink(1.0),
+                    6.0,
+                    Stroke::new(1.0, visuals.selection.bg_fill.gamma_multiply(0.7)),
+                    StrokeKind::Inside,
+                );
+            }
         }
 
         // Slot backgrounds first: a click on a slot's free part selects it.
@@ -752,8 +983,11 @@ impl Demo {
             .changed()
         {
             item.pin = if pinned {
-                let at = placement.and_then(|p| p.rect);
-                Some(at.map_or(Cell { col: 0, row: 0 }, |r| Cell { col: r.x, row: r.y }))
+                Some(
+                    placement
+                        .and_then(pin_of)
+                        .unwrap_or(Cell { col: 0, row: 0 }),
+                )
             } else {
                 None
             };
@@ -766,9 +1000,10 @@ impl Demo {
                 ui.add(egui::DragValue::new(&mut pin.row).range(0..=1200));
                 ui.label("twelfths");
             });
+            ui.label(RichText::new("Counted from the top of its band: its case's controls, or its run of loose ones").weak());
             if ui.button("Pin where it is now").clicked() {
-                if let Some(r) = placement.and_then(|p| p.rect) {
-                    *pin = Cell { col: r.x, row: r.y };
+                if let Some(at) = placement.and_then(pin_of) {
+                    *pin = at;
                 }
             }
         }
@@ -818,6 +1053,15 @@ enum Action {
     Select(u64),
     Remove(usize),
     Move(usize, usize),
+    Mark(u64, bool),
+}
+
+/// Where a placed element is, as a pin: from the top of its band.
+fn pin_of(p: Placement) -> Option<Cell> {
+    p.rect.map(|r| Cell {
+        col: r.x,
+        row: r.y - p.band_top,
+    })
 }
 
 /// The dump's letter for a logical index.
@@ -882,6 +1126,12 @@ fn placement_text(p: &Placement, items: &[Item]) -> String {
             r.x,
             r.y
         ));
+    }
+    if p.group.is_some() {
+        text.push_str("\nin a case");
+    }
+    if p.band_top > 0 {
+        text.push_str(&format!("\nits band starts at row {}", p.band_top));
     }
     text
 }
@@ -1073,4 +1323,84 @@ fn size_combo(ui: &mut Ui, size: &mut Size, salt: impl std::hash::Hash + std::fm
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn demo(preset: &str) -> Demo {
+        let mut d = Demo::default();
+        let p = PRESETS.iter().find(|p| p.0 == preset).copied().unwrap();
+        d.preset(p);
+        d
+    }
+
+    fn labels(d: &Demo) -> Vec<(&str, Option<u64>)> {
+        d.items.iter().map(|i| (i.label.as_str(), i.case)).collect()
+    }
+
+    #[test]
+    fn the_two_cases_preset_frames_two_groups() {
+        let mut d = demo("Two cases");
+        let groups = d.groups();
+        assert_eq!(groups.len(), 2);
+        assert!(groups.iter().all(|g| g.header));
+        let (l, _) = d.run_layout(4.0 * d.density.unit());
+        let bands: Vec<_> = l.groups.iter().map(|g| g.rect.unwrap()).collect();
+        assert!(bands[0].bottom() <= bands[1].y);
+        // The loose knob between the cases sits between their bands.
+        let knob = l.placements[7].rect.unwrap();
+        assert!(bands[0].bottom() <= knob.y && knob.bottom() <= bands[1].y);
+    }
+
+    #[test]
+    fn marked_items_group_under_a_legend_and_ungroup() {
+        let mut d = demo("Darkroom card");
+        let (a, c) = (d.items[1].key, d.items[3].key);
+        d.marked.extend([c, a]);
+        d.group_marked();
+        let case = d.items[1].key;
+        assert_eq!(
+            labels(&d)[..5],
+            [
+                ("Enabled", None),
+                ("Case 1", Some(case)),
+                ("Mode", Some(case)),
+                ("Contrast", Some(case)),
+                ("Exposure", None)
+            ]
+        );
+        assert_eq!(d.groups(), [Group::new(case, 1..4).with_header()]);
+        d.ungroup(case);
+        assert_eq!(d.items.len(), 9);
+        assert!(d.groups().is_empty());
+    }
+
+    #[test]
+    fn moves_cross_a_case_edge_first() {
+        let mut d = demo("Darkroom card");
+        d.marked.insert(d.items[1].key);
+        d.group_marked();
+        let case = d.items[1].key;
+        // Enabled moves down past the legend: into the case.
+        d.step(0, 1);
+        assert_eq!(
+            labels(&d)[..3],
+            [
+                ("Case 1", Some(case)),
+                ("Enabled", Some(case)),
+                ("Mode", Some(case))
+            ]
+        );
+        // Mode moves down onto Exposure: out of the case, in place.
+        d.step(2, 3);
+        assert_eq!(labels(&d)[2], ("Mode", None));
+        // Enabled moves up past the legend: out; the empty case goes.
+        d.step(1, 0);
+        assert!(d
+            .items
+            .iter()
+            .all(|i| i.case.is_none() && i.kind != Kind::Legend));
+    }
 }

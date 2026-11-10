@@ -20,6 +20,9 @@ pub enum Kind {
     Meter,
     Histogram,
     Block,
+    /// A case's legend: its group's header. Made by grouping, not in the
+    /// palette.
+    Legend,
 }
 
 impl Kind {
@@ -49,6 +52,7 @@ impl Kind {
             Kind::Meter => "Meter",
             Kind::Histogram => "Histogram",
             Kind::Block => "Plain block",
+            Kind::Legend => "Legend",
         }
     }
 
@@ -65,6 +69,7 @@ impl Kind {
             Kind::Meter => "An indicator, horizontal or vertical",
             Kind::Histogram => "An indicator block, growable",
             Kind::Block => "A plain box, for packing experiments",
+            Kind::Legend => "A case's title: its group's header, on a band of its own",
         }
     }
 
@@ -142,6 +147,13 @@ impl Kind {
                 SizePolicy::fixed(s(S::ONE, third)),
             ],
             Kind::Block => vec![SizePolicy::fixed(s(S::ONE, S::HALF))],
+            // Alone on its band, it grows across the box.
+            Kind::Legend => vec![SizePolicy::growable(
+                s(S::QUARTER, quarter),
+                s(S::ONE, quarter),
+                s(S::units(20), quarter),
+                Axis::Width,
+            )],
         }
     }
 
@@ -168,6 +180,7 @@ impl Kind {
             Kind::Meter => "Level",
             Kind::Histogram => "Histogram",
             Kind::Block => "Block",
+            Kind::Legend => "Case",
         }
     }
 }
@@ -220,7 +233,10 @@ pub struct Item {
     /// Vertical first when both are supported.
     pub prefer_vertical: bool,
     pub pinned_orientation: Option<Orientation>,
+    /// The pin, counted from the top of the element's band.
     pub pin: Option<Cell>,
+    /// The case it is in: the key of the case's legend.
+    pub case: Option<u64>,
     pub values: Values,
 }
 
@@ -244,6 +260,7 @@ impl Item {
             prefer_vertical: false,
             pinned_orientation: None,
             pin: None,
+            case: None,
             values: Values::default(),
         }
     }
@@ -257,6 +274,12 @@ impl Item {
     pub fn sized(mut self, size: Size2) -> Item {
         self.forms.truncate(1);
         self.forms[0].policy = SizePolicy::fixed(size);
+        self
+    }
+
+    /// The same item in case `case`.
+    pub fn in_case(mut self, case: u64) -> Item {
+        self.case = Some(case);
         self
     }
 

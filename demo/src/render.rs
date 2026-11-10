@@ -172,6 +172,15 @@ pub fn show(
                 .show(ui);
             });
         }
+        Kind::Legend => {
+            ui.painter().text(
+                rect.left_center() + vec2(4.0, 0.0),
+                Align2::LEFT_CENTER,
+                &label,
+                FontId::proportional(13.0),
+                ui.visuals().strong_text_color(),
+            );
+        }
         Kind::Block => {
             let painter = ui.painter();
             let fill = block_color(item.key);
