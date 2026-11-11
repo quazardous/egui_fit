@@ -1,4 +1,4 @@
-//! The demo: a resizable box laid out by egui_gridflow, a palette and a
+//! The demo: a resizable box laid out by egui_fit, a palette and a
 //! list of elements grouped into cases, an inspector for the selected one,
 //! overlays, a hysteresis trail and the engine's ASCII dump.
 
@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::catalog::{s, Form, Item, Kind, FORM_NAMES};
 use crate::render;
-use egui_gridflow::{
+use egui_fit::{
     layout_grouped, AspectRatio, Axis, Cell, Container, Group, Grow, Layout, Orientation,
     Placement, Reason, Size, Status, TWELFTHS_PER_UNIT,
 };
@@ -499,7 +499,7 @@ impl Demo {
     fn toolbar(&mut self, ui: &mut Ui) {
         let unit = self.density.unit();
         ui.horizontal_wrapped(|ui| {
-            ui.strong("egui_gridflow");
+            ui.strong("egui_fit");
             ui.label(RichText::new(self.preset).weak());
             ui.separator();
             ui.label("Width");

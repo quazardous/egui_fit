@@ -1,7 +1,7 @@
 //! The kinds of element the demo offers, what each declares to the engine
 //! (its forms and orientations), and the values each widget edits.
 
-use egui_gridflow::{Axis, Cell, Element, Orientation, Size, Size2, SizePolicy};
+use egui_fit::{Axis, Cell, Element, Orientation, Size, Size2, SizePolicy};
 use egui_pop::viewport::wheel::WheelValue;
 
 /// The names of the forms, by index.

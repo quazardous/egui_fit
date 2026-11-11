@@ -38,8 +38,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: trunk
-      - run: cargo clippy -p egui_gridflow_demo --all-targets -- -D warnings
-      - run: cargo clippy -p egui_gridflow_demo --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo clippy -p egui_fit_demo --all-targets -- -D warnings
+      - run: cargo clippy -p egui_fit_demo --target wasm32-unknown-unknown -- -D warnings
       - name: Build the demo for the web
         working-directory: demo
         run: trunk build --release

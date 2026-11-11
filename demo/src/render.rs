@@ -3,7 +3,7 @@
 //! item's values.
 
 use crate::catalog::{Item, Kind};
-use egui_gridflow::Orientation;
+use egui_fit::Orientation;
 use egui_pop::core::icon::Icon;
 use egui_pop::core::input::Input;
 use egui_pop::core::kit::Tone;

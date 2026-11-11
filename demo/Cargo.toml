@@ -1,19 +1,19 @@
 [package]
-name = "egui_gridflow_demo"
+name = "egui_fit_demo"
 version = "0.0.0"
 edition = "2021"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
-description = "An interactive web demo of egui_gridflow, with egui-pop widgets as elements"
-repository = "https://github.com/quazardous/egui_gridflow"
+description = "An interactive web demo of egui_fit, with egui-pop widgets as elements"
+repository = "https://github.com/quazardous/egui_fit"
 publish = false
 
 [[bin]]
-name = "egui_gridflow_demo"
+name = "egui_fit_demo"
 path = "src/main.rs"
 
 [dependencies]
-egui_gridflow = { path = ".." }
+egui_fit = { path = ".." }
 # The widgets laid out (sliders, toggles, fields, curve, wheels,
 # histogram), and egui and eframe through egui-pop's re-exports.
 egui-pop = { version = "0.7.0", default-features = false, features = ["eframe", "phosphor", "bundled-fonts", "viewport"] }

@@ -1,8 +1,8 @@
-//! An interactive demo of egui_gridflow: real egui-pop widgets laid out in
+//! An interactive demo of egui_fit: real egui-pop widgets laid out in
 //! a box you resize, with the engine's choices drawn over them.
 //!
 //! On the web: `trunk serve` in this directory. On the desktop:
-//! `cargo run -p egui_gridflow_demo`.
+//! `cargo run -p egui_fit_demo`.
 
 mod app;
 mod catalog;
@@ -26,7 +26,7 @@ fn create(_cc: &eframe::CreationContext<'_>) -> DemoApp {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     eframe::run_native(
-        "egui_gridflow demo",
+        "egui_fit demo",
         eframe::NativeOptions::default(),
         Box::new(|cc| Ok(Box::new(create(cc)))),
     )
@@ -76,7 +76,7 @@ fn main() {
 /// canvas.
 #[cfg(target_arch = "wasm32")]
 fn failed(why: &str) {
-    log::error!("egui_gridflow demo: {why}");
+    log::error!("egui_fit demo: {why}");
     let Some(document) = eframe::web_sys::window().and_then(|w| w.document()) else {
         return;
     };
