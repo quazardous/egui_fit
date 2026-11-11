@@ -16,7 +16,7 @@ path = "src/main.rs"
 egui_fit = { path = ".." }
 # The widgets laid out (sliders, toggles, fields, curve, wheels,
 # histogram), and egui and eframe through egui-pop's re-exports.
-egui-pop = { version = "0.7.0", default-features = false, features = ["eframe", "phosphor", "bundled-fonts", "viewport"] }
+egui-pop = { version = "0.8", default-features = false, features = ["eframe", "phosphor", "bundled-fonts", "viewport"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
